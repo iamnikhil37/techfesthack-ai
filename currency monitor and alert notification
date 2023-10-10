@@ -1,0 +1,154 @@
+import tkinter as tk
+from tkinter import ttk
+from ttkthemes import ThemedStyle
+from forex_python.converter import CurrencyRates
+from plyer import notification
+import requests
+import time
+from threading import Thread
+
+API_ACCESS_KEY = '2613d51361be057ea8df24ae0fc72102'
+API_BASE_URL = f'http://api.exchangeratesapi.io/v1/latest?access_key={API_ACCESS_KEY}'
+
+class Bureau:
+    def _init_(self, endpoint, port):
+        self.endpoint = endpoint
+        self.port = port
+        self.agents = []
+
+    def submit_data(self, data):
+        # Example: send data to an endpoint
+        # Replace this with your actual implementation
+        print(f"Submitting data to {self.endpoint}:{self.port}: {data}")
+
+    def run_agents(self):
+        # Example: run agents
+        # Replace this with your actual implementation
+        print("Running agents...")
+
+    def add_agent(self, agent):
+        self.agents.append(agent)
+
+class CurrencyExchangeApp:
+    def _init_(self, root, bureau):
+        self.root = root
+        self.bureau = bureau
+        self.setup_gui()
+
+    def setup_gui(self):
+        self.root.title("Currency Exchange Monitor & Alert Agent")
+
+        style = ThemedStyle(self.root)
+        style.set_theme("clam")
+
+        self.create_widgets()
+
+    def create_widgets(self):
+        # Labels
+        self.base_currency_label = ttk.Label(self.root, text="Base Currency:", font=('Arial', 12, 'bold'))
+        self.target_currency_label = ttk.Label(self.root, text="Target Currency (e.g., EUR):", font=('Arial', 12, 'bold'))
+        self.threshold_label = ttk.Label(self.root, text="Threshold Exchange Rate:", font=('Arial', 12, 'bold'))
+
+        # Comboboxes and Entries
+        self.base_currency_combobox = ttk.Combobox(self.root, values=self.get_currency_list(), font=('Arial', 12))
+        self.target_currency_entry = tk.Entry(self.root, font=('Arial', 12))
+        self.threshold_entry = tk.Entry(self.root, font=('Arial', 12))
+
+        # Button
+        self.monitor_button = ttk.Button(self.root, text="Start Monitoring", command=self.start_monitoring, style="Accent.TButton")
+
+        # Configure button style
+        style = ttk.Style()
+        style.configure("Accent.TButton", foreground="white", background="#4CAF50", padding=(10, 5), font=('Arial', 12, 'bold'))
+
+        self.arrange_widgets()
+
+    def arrange_widgets(self):
+        # Grid layout
+        self.base_currency_label.grid(row=0, column=0, pady=10, padx=10, sticky=tk.W)
+        self.base_currency_combobox.grid(row=0, column=1, pady=10, padx=10, sticky=tk.W)
+
+        self.target_currency_label.grid(row=1, column=0, pady=10, padx=10, sticky=tk.W)
+        self.target_currency_entry.grid(row=1, column=1, pady=10, padx=10, sticky=tk.W)
+
+        self.threshold_label.grid(row=2, column=0, pady=10, padx=10, sticky=tk.W)
+        self.threshold_entry.grid(row=2, column=1, pady=10, padx=10, sticky=tk.W)
+
+        self.monitor_button.grid(row=3, column=0, columnspan=2, pady=20, padx=10)
+
+    def get_currency_list(self):
+        c = CurrencyRates()
+        return list(c.get_rates("USD").keys())
+
+    def get_exchange_rate(self, base_currency, target_currency):
+        response = requests.get(API_BASE_URL)
+        data = response.json()
+
+        # Check for errors in the API response
+        if 'error' in data:
+            raise Exception(f"API Error: {data['error']['info']}")
+
+        # Extract the exchange rate from the response
+        return data['rates'][target_currency]
+
+    def display_exchange_rate(self, base_currency, target_currency, rate):
+        display_str = f"{base_currency} to {target_currency}: {rate:.4f}"
+        notification.notify(
+            title="Currency Exchange Update",
+            message=display_str,
+            app_name="Currency Exchange Monitor"
+        )
+
+    def alert_user(self, base_currency, target_currency, threshold):
+        alert_str = f"ALERT: {base_currency} to {target_currency} rate exceeds {threshold}!"
+        notification.notify(
+            title="Exchange Rate Alert",
+            message=alert_str,
+            app_name="Currency Exchange Monitor"
+        )
+
+    def start_monitoring(self):
+        base_currency = self.base_currency_combobox.get()
+        target_currency = self.target_currency_entry.get().upper()
+        threshold = float(self.threshold_entry.get())
+
+        print(f"Monitoring {base_currency} to {target_currency} exchange rate...\n")
+
+        try:
+            while True:
+                rate = self.get_exchange_rate(base_currency, target_currency)
+                self.display_exchange_rate(base_currency, target_currency, rate)
+
+                if rate > threshold:
+                    self.alert_user(base_currency, target_currency, threshold)
+
+                # Send data to Bureau (example)
+                data_to_send = {"base_currency": base_currency, "target_currency": target_currency, "exchange_rate": rate}
+                self.bureau.submit_data(data_to_send)
+
+                # Wait for 50 minutes before checking again
+                time.sleep(3000)
+
+        except KeyboardInterrupt:
+            print("\nMonitoring stopped by the user.")
+        except Exception as e:
+            print(f"Error: {e}")
+
+def main():
+    root = tk.Tk()
+    bureau = Bureau(endpoint="http://127.0.0.1:8000/submit", port=8000)
+
+    app = CurrencyExchangeApp(root, bureau)
+
+    # Add agents to the Bureau
+    bureau.add_agent("Agent1")
+    bureau.add_agent("Agent2")
+
+    # Run the agents in a separate thread
+    agents_thread = Thread(target=bureau.run_agents)
+    agents_thread.start()
+
+    root.mainloop()
+
+if _name_ == "_main_":
+    main()
